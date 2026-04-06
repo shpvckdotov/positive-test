@@ -23,9 +23,6 @@ services:
       DATABASE_URL: "postgresql+asyncpg://loguser:logpassword@db:5432/logclustering"
       DATABASE_URL_SYNC: "postgresql://loguser:logpassword@db:5432/logclustering"
       MODEL_DIR: "/app/models"
-      LINUX_LOG_PATH: "/app/data/sample_logs/linux.log"
-      WINDOWS_LOG_PATH: "/app/data/sample_logs/windows.log"
-      HDFS_LOG_PATH: "/app/data/sample_logs/hdfs.log"
     volumes:
       - ./models:/app/models
     depends_on:

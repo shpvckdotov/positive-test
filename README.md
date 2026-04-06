@@ -53,7 +53,7 @@
 
 **Предобработка — Drain-style нормализация**  
 Логи содержат переменные части (IP, PID, имена файлов), которые мешают кластеризации.  
-Заменяем их токенами (`<IP>`, `<NUM>`, `<PATH>`, `<UUID>`, `<HEX>`) с помощью regex — это стандартный подход из статьи Drain (2017).
+Заменяем их токенами (`<IP>`, `<NUM>`, `<PATH>`, `<UUID>`, `<HEX>`) с помощью regex — это стандартный подход.
 
 **Векторизация — TF-IDF (1+2-gram)**  
 - Быстро, интерпретируемо, хорошо работает на шаблонных текстах (логи ≠ свободный текст).  
@@ -113,7 +113,7 @@ cp .env.example .env
 # Отредактируйте DATABASE_URL в .env
 
 # 1. Сгенерировать данные
-python data/download_data.py --output-dir data/sample_logs --n-lines 15000
+python data/data_download.py
 
 # 2. Обучить модель
 python ml/train.py
@@ -121,21 +121,14 @@ python ml/train.py
 # 3. Оценить качество
 python ml/evaluate.py
 
-# 4. Запустить сервис
-uvicorn app.main:app --reload --port 8000
+# 4. Запустить сервисы
+docker-compose up --build 
+
 ```
+
+# В браузере ввести url [localhost:8000](http://localhost:8000)
 
 ### Использование реальных данных LogHub
-
-```bash
-# Скачайте датасеты вручную с https://github.com/logpai/loghub
-# Поместите файлы:
-#   data/sample_logs/linux.log    (Linux/auth.log или syslog)
-#   data/sample_logs/windows.log  (Windows/Windows_2k.log)
-#   data/sample_logs/hdfs.log     (HDFS/HDFS_2k.log)
-
-python ml/train.py --max-lines 50000
-```
 
 ---
 
@@ -267,21 +260,20 @@ pytest tests/ -v
 
 ## Оценка качества кластеризации
 
-Результаты на синтетическом датасете (15 000 строк, 3 источника):
+Результаты на синтетическом датасете :
 
 | Метрика | Значение | Интерпретация |
 |---|---|---|
-| Число кластеров | ~10–15 | Соответствует числу шаблонов |
+| Число кластеров | ~80 | Соответствует числу шаблонов |
 | Noise ratio | ~5–15% | Аномальные/редкие события |
-| Silhouette score | 0.45–0.65 | Хорошее разделение кластеров (диапазон −1..1) |
-| Davies-Bouldin | 0.8–1.2 | Компактные, хорошо разделённые кластеры (ниже = лучше) |
+| Silhouette score | 0.7–0.82 | Хорошее разделение кластеров (диапазон −1..1) |
+| Davies-Bouldin | 0.7-0.8 | Компактные, хорошо разделённые кластеры (ниже = лучше) |
 
-> На реальных данных LogHub (Linux auth.log, Windows 2k, HDFS 2k) silhouette score обычно выше (0.6–0.75), т.к. реальные шаблоны более однородны.
 
 ### Как запустить оценку вручную
 
 ```bash
-python ml/evaluate.py --max-lines 20000
+python ml/evaluate.py 
 ```
 
 ---
