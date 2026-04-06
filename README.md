@@ -88,7 +88,12 @@
 git clone <repo-url>
 cd log-clustering-service
 
-# Запуск (PostgreSQL + FastAPI, обучение модели встроено в образ)
+python data/data_download.py
+
+python ml/train.py
+
+python ml/evaluate.py
+
 docker compose up --build
 
 # Сервис будет доступен на:
