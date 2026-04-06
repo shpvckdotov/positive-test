@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="page-header">
+  <h1>Cluster Visualization</h1>
+  <p class="subtitle">t-SNE 2D projection of log event embeddings</p>
+</div>
+
+<section class="card">
+  <div class="viz-toolbar">
+    <label>
+      Points:
+      <select id="viz-limit">
+        <option value="200">200</option>
+        <option value="500" selected>500</option>
+        <option value="1000">1 000</option>
+        <option value="2000">2 000</option>
+      </select>
+    </label>
+    <button class="btn btn-primary" id="btn-load-viz">Load / Refresh</button>
+    <span id="viz-status" class="viz-status"></span>
+  </div>
+
+  <div id="viz-container">
+    <canvas id="viz-canvas"></canvas>
+    <div id="viz-tooltip" class="viz-tooltip hidden"></div>
+  </div>
+
+  <div class="legend" id="viz-legend"></div>
+</section>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+<script>
+let chart = null;
+
+const PALETTE = [
+  '#4C72B0','#DD8452','#55A868','#C44E52','#8172B3',
+  '#937860','#DA8BC3','#8C8C8C','#CCB974','#64B5CD',
+  '#1f77b4','#ff7f0e','#2ca02c','#d62728','#9467bd',
+  '#8c564b','#e377c2','#7f7f7f','#bcbd22','#17becf',
+];
+
+function getColor(label, isAnomaly) {
+  if (isAnomaly) return '#FF0000';
+  const idx = ((label % PALETTE.length) + PALETTE.length) % PALETTE.length;
+  return PALETTE[idx];
+}
+
+async function loadViz() {
+  const limit = document.getElementById('viz-limit').value;
+  const status = document.getElementById('viz-status');
+  status.textContent = 'Computing t-SNE…';
+  document.getElementById('btn-load-viz').disabled = true;
+
+  try {
+    const res = await fetch(`/api/v1/visualize?limit=${limit}`);
+    if (!res.ok) { const d = await res.json(); throw new Error(d.detail); }
+    const data = await res.json();
+
+    if (!data.points.length) {
+      status.textContent = 'No data to visualize.';
+      return;
+    }
+
+    renderChart(data.points, data.clusters);
+    renderLegend(data.clusters);
+    status.textContent = `${data.points.length} points rendered`;
+  } catch (e) {
+    status.textContent = 'Error: ' + e.message;
+  } finally {
+    document.getElementById('btn-load-viz').disabled = false;
+  }
+}
+
+function renderChart(points, clusters) {
+  const ctx = document.getElementById('viz-canvas').getContext('2d');
+  if (chart) { chart.destroy(); }
+
+  // Group by cluster_label for dataset separation
+  const groups = {};
+  for (const p of points) {
+    const key = p.cluster_label;
+    if (!groups[key]) groups[key] = { label: key, isAnomaly: p.is_anomaly, data: [] };
+    groups[key].data.push({ x: p.x, y: p.y, meta: p });
+  }
+
+  const datasets = Object.values(groups).map(g => ({
+    label: g.isAnomaly ? 'Anomaly' : `Cluster #${g.label}`,
+    data: g.data,
+    backgroundColor: getColor(g.label, g.isAnomaly) + 'AA',
+    borderColor: getColor(g.label, g.isAnomaly),
+    borderWidth: g.isAnomaly ? 2 : 1,
+    pointRadius: g.isAnomaly ? 6 : 4,
+    pointStyle: g.isAnomaly ? 'triangle' : 'circle',
+  }));
+
+  chart = new Chart(ctx, {
+    type: 'scatter',
+    data: { datasets },
+    options: {
+      animation: false,
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => {
+              const p = ctx.raw.meta;
+              return [
+                `Source: ${p.source_type}`,
+                `Cluster: ${p.is_anomaly ? 'ANOMALY' : '#' + p.cluster_label}`,
+                p.message_preview.substring(0, 80),
+              ];
+            }
+          }
+        }
+      },
+      scales: {
+        x: { display: false },
+        y: { display: false }
+      }
+    }
+  });
+}
+
+function renderLegend(clusters) {
+  const el = document.getElementById('viz-legend');
+  const items = clusters.slice(0, 20).map(c => `
+    <div class="legend-item">
+      <span class="legend-dot" style="background:${getColor(c.label, c.is_anomaly)}"></span>
+      ${c.is_anomaly ? 'Anomaly' : '#' + c.label}
+      <span class="legend-size">(${c.size})</span>
+    </div>
+  `).join('');
+  el.innerHTML = items;
+}
+
+document.getElementById('btn-load-viz').addEventListener('click', loadViz);
+loadViz();
+</script>
+{% endblock %}
