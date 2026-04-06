@@ -86,6 +86,11 @@
 
 ```bash
 git clone <repo-url>
+
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+
 cd log-clustering-service
 
 python data/data_download.py
