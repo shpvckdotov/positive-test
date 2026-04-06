@@ -107,8 +107,6 @@ docker compose up --build
 #   Swagger: http://localhost:8000/docs
 ```
 
-> Первый `docker compose up --build` занимает ~3–5 минут (установка зависимостей + обучение модели на синтетических данных).
-
 ---
 
 ## Локальный запуск (без Docker)
