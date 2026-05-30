@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{ title }} — Log Clustering Service</title>
+  <link rel="stylesheet" href="/static/css/main.css" />
+</head>
+<body>
+  <nav class="navbar">
+    <div class="nav-brand">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+      </svg>
+      Log Clustering Service
+    </div>
+    <ul class="nav-links">
+      <li><a href="/" class="{% if title == 'Dashboard' %}active{% endif %}">Dashboard</a></li>
+      <li><a href="/clusters-view" class="{% if title == 'Clusters' %}active{% endif %}">Clusters</a></li>
+      <li><a href="/visualize-view" class="{% if title == 'Visualization' %}active{% endif %}">Visualization</a></li>
+      <li><a href="/docs" target="_blank">API Docs</a></li>
+    </ul>
+  </nav>
+
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
+
+  <script src="/static/js/main.js"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

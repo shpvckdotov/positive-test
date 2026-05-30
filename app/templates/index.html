@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="page-header">
+  <h1>SOC Log Dashboard</h1>
+  <p class="subtitle">Real-time event classification and cluster monitoring</p>
+</div>
+
+<!-- Stats cards -->
+<div class="stats-grid" id="stats-grid">
+  <div class="stat-card">
+    <div class="stat-value" id="stat-total">—</div>
+    <div class="stat-label">Total Events</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value" id="stat-clusters">—</div>
+    <div class="stat-label">Clusters</div>
+  </div>
+  <div class="stat-card anomaly">
+    <div class="stat-value" id="stat-anomalies">—</div>
+    <div class="stat-label">Anomalies</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value" id="stat-rate">—</div>
+    <div class="stat-label">Anomaly Rate</div>
+  </div>
+</div>
+
+<!-- Classify form -->
+<section class="card">
+  <h2>Classify New Log Event</h2>
+  <form id="classify-form">
+    <div class="form-row">
+      <div class="form-group flex-grow">
+        <label for="raw-log">Raw Log Line</label>
+        <textarea id="raw-log" rows="3"
+          placeholder="Jun 14 15:16:01 combo sshd[1234]: Failed password for root from 192.168.1.1 port 22 ssh2"></textarea>
+      </div>
+      <div class="form-group">
+        <label for="source-type">Source</label>
+        <select id="source-type">
+          <option value="linux">Linux</option>
+          <option value="windows">Windows</option>
+          <option value="hdfs">HDFS</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">Classify</button>
+      <button type="button" class="btn btn-secondary" id="btn-sample">Load Sample</button>
+    </div>
+  </form>
+
+  <!-- Result -->
+  <div id="classify-result" class="classify-result hidden"></div>
+</section>
+
+<!-- Recent events -->
+<section class="card">
+  <div class="section-header">
+    <h2>Recent Events</h2>
+    <select id="filter-source" class="filter-select">
+      <option value="">All sources</option>
+      <option value="linux">Linux</option>
+      <option value="windows">Windows</option>
+      <option value="hdfs">HDFS</option>
+    </select>
+  </div>
+  <div class="table-wrap">
+    <table id="events-table">
+      <thead>
+        <tr>
+          <th>ID</th><th>Source</th><th>Level</th><th>Message</th>
+          <th>Cluster</th><th>Anomaly</th><th>Confidence</th><th>Time</th>
+        </tr>
+      </thead>
+      <tbody id="events-tbody">
+        <tr><td colspan="8" class="empty">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const SAMPLES = {
+  linux: "Jun 14 15:16:01 combo sshd(pam_unix)[19939]: authentication failure; logname= uid=0 euid=0 tty=NODEVssh ruser= rhost=218.188.2.4",
+  windows: "2004-11-04 03:26:32, Information, 4624, Security, An account was successfully logged on. Subject: Security ID: S-1-5-18 Logon Type: 3",
+  hdfs: "081109 204005 1 INFO dfs.DataNode$DataXceiver: Receiving block blk_-1608999687919862906 src: /10.250.19.102:54106 dest: /10.250.19.102:50010"
+};
+
+document.getElementById('btn-sample').addEventListener('click', () => {
+  const src = document.getElementById('source-type').value;
+  document.getElementById('raw-log').value = SAMPLES[src] || SAMPLES.linux;
+});
+
+document.getElementById('classify-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const raw_log = document.getElementById('raw-log').value.trim();
+  const source_type = document.getElementById('source-type').value;
+  if (!raw_log) return;
+
+  const btn = e.target.querySelector('button[type=submit]');
+  btn.disabled = true; btn.textContent = 'Classifying…';
+
+  try {
+    const res = await fetch('/api/v1/classify', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({raw_log, source_type})
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Error');
+    showResult(data);
+    loadEvents();
+    loadStats();
+  } catch (err) {
+    showError(err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Classify';
+  }
+});
+
+function showResult(data) {
+  const el = document.getElementById('classify-result');
+  const isAnom = data.is_anomaly;
+  const conf = data.confidence != null ? (data.confidence * 100).toFixed(1) + '%' : 'N/A';
+  el.className = 'classify-result ' + (isAnom ? 'anomaly' : 'normal');
+  el.innerHTML = `
+    <div class="result-badge ${isAnom ? 'badge-anomaly' : 'badge-normal'}">
+      ${isAnom ? '⚠ ANOMALY' : '✓ CLASSIFIED'}
+    </div>
+    <div class="result-details">
+      <strong>${data.message}</strong>
+      <div class="result-meta">
+        Event ID: ${data.event.id} &nbsp;|&nbsp;
+        Cluster: ${data.cluster ? '#' + data.cluster.label + ' — ' + data.cluster.template.substring(0,60) : 'None'} &nbsp;|&nbsp;
+        Confidence: ${conf}
+      </div>
+      ${data.cluster ? `<div class="result-template">Template: <em>${data.cluster.template.substring(0,120)}</em></div>` : ''}
+    </div>
+  `;
+  el.classList.remove('hidden');
+}
+
+function showError(msg) {
+  const el = document.getElementById('classify-result');
+  el.className = 'classify-result error';
+  el.innerHTML = `<div class="result-badge badge-error">ERROR</div><div class="result-details">${msg}</div>`;
+  el.classList.remove('hidden');
+}
+
+async function loadStats() {
+  try {
+    const res = await fetch('/api/v1/stats');
+    const data = await res.json();
+    document.getElementById('stat-total').textContent = data.total_events.toLocaleString();
+    document.getElementById('stat-clusters').textContent = data.total_clusters;
+    document.getElementById('stat-anomalies').textContent = data.anomaly_count.toLocaleString();
+    document.getElementById('stat-rate').textContent = (data.anomaly_rate * 100).toFixed(1) + '%';
+  } catch {}
+}
+
+async function loadEvents() {
+  const src = document.getElementById('filter-source').value;
+  const url = `/api/v1/events?limit=30${src ? '&source_type=' + src : ''}`;
+  try {
+    const res = await fetch(url);
+    const events = await res.json();
+    const tbody = document.getElementById('events-tbody');
+    if (!events.length) { tbody.innerHTML = '<tr><td colspan="8" class="empty">No events yet</td></tr>'; return; }
+    tbody.innerHTML = events.map(e => `
+      <tr class="${e.is_anomaly ? 'row-anomaly' : ''}">
+        <td>${e.id}</td>
+        <td><span class="badge badge-source-${e.source_type}">${e.source_type}</span></td>
+        <td>${e.log_level || '—'}</td>
+        <td class="msg-cell" title="${escHtml(e.raw_log)}">${escHtml((e.message || e.raw_log).substring(0,80))}</td>
+        <td>${e.cluster ? '#' + e.cluster.label : '<em>—</em>'}</td>
+        <td>${e.is_anomaly ? '<span class="badge badge-anomaly">YES</span>' : '<span class="badge badge-ok">no</span>'}</td>
+        <td>${e.confidence != null ? (e.confidence * 100).toFixed(0) + '%' : '—'}</td>
+        <td class="time-cell">${new Date(e.created_at).toLocaleTimeString()}</td>
+      </tr>
+    `).join('');
+  } catch {}
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+document.getElementById('filter-source').addEventListener('change', loadEvents);
+
+loadStats();
+loadEvents();
+setInterval(() => { loadStats(); loadEvents(); }, 10000);
+</script>
+{% endblock %}

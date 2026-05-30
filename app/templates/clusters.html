@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="page-header">
+  <h1>Cluster Explorer</h1>
+  <p class="subtitle">Browse and inspect log clusters</p>
+</div>
+
+<div class="clusters-layout">
+  <!-- Cluster list -->
+  <section class="card cluster-list-panel">
+    <div class="section-header">
+      <h2>Clusters</h2>
+      <span id="cluster-count" class="count-badge">—</span>
+    </div>
+    <div id="cluster-list" class="cluster-list">
+      <div class="empty">Loading…</div>
+    </div>
+  </section>
+
+  <!-- Cluster detail -->
+  <section class="card cluster-detail-panel" id="detail-panel">
+    <div class="empty-detail">
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="1.5">
+        <circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+      </svg>
+      <p>Select a cluster to view details</p>
+    </div>
+  </section>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let selectedClusterId = null;
+
+async function loadClusters() {
+  const res = await fetch('/api/v1/clusters');
+  const clusters = await res.json();
+  document.getElementById('cluster-count').textContent = clusters.length;
+  const list = document.getElementById('cluster-list');
+  if (!clusters.length) { list.innerHTML = '<div class="empty">No clusters yet. Classify some logs first.</div>'; return; }
+
+  list.innerHTML = clusters.map(c => `
+    <div class="cluster-item ${c.is_anomaly ? 'cluster-anomaly' : ''}" data-id="${c.id}" onclick="loadClusterDetail(${c.id})">
+      <div class="cluster-item-header">
+        <span class="cluster-label">${c.is_anomaly ? '⚠' : '#' + c.label}</span>
+        <span class="cluster-size">${c.size} events</span>
+      </div>
+      <div class="cluster-template">${escHtml(c.template.substring(0, 90))}</div>
+      <div class="cluster-meta">
+        <span class="badge badge-source-${c.source_type}">${c.source_type}</span>
+        ${c.is_anomaly ? '<span class="badge badge-anomaly">anomaly</span>' : ''}
+      </div>
+    </div>
+  `).join('');
+}
+
+async function loadClusterDetail(clusterId) {
+  selectedClusterId = clusterId;
+  document.querySelectorAll('.cluster-item').forEach(el => {
+    el.classList.toggle('selected', parseInt(el.dataset.id) === clusterId);
+  });
+
+  const panel = document.getElementById('detail-panel');
+  panel.innerHTML = '<div class="empty">Loading…</div>';
+
+  const res = await fetch(`/api/v1/clusters/${clusterId}`);
+  const data = await res.json();
+  const c = data.cluster;
+
+  panel.innerHTML = `
+    <div class="detail-header">
+      <div>
+        <h2>${c.is_anomaly ? '⚠ Anomaly Cluster' : 'Cluster #' + c.label}</h2>
+        <div class="detail-meta">
+          <span class="badge badge-source-${c.source_type}">${c.source_type}</span>
+          &nbsp;${c.size} events &nbsp;|&nbsp; Created: ${new Date(c.created_at).toLocaleString()}
+        </div>
+      </div>
+    </div>
+
+    <div class="detail-template">
+      <strong>Representative Template:</strong>
+      <pre>${escHtml(c.template)}</pre>
+    </div>
+
+    <h3>Recent Events (${data.total_events} total)</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>ID</th><th>Level</th><th>Message</th><th>Confidence</th><th>Time</th></tr></thead>
+        <tbody>
+          ${data.recent_events.map(e => `
+            <tr>
+              <td>${e.id}</td>
+              <td>${e.log_level || '—'}</td>
+              <td class="msg-cell" title="${escHtml(e.raw_log)}">${escHtml((e.message || e.raw_log).substring(0, 100))}</td>
+              <td>${e.confidence != null ? (e.confidence * 100).toFixed(0) + '%' : '—'}</td>
+              <td class="time-cell">${new Date(e.created_at).toLocaleString()}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+loadClusters();
+</script>
+{% endblock %}
